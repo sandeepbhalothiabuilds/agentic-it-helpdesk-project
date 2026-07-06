@@ -1,0 +1,5 @@
+user_id,vpn_status,profile_name,last_successful_login,certificate_status,device_compliance
+U7001,Enabled,Corp-Standard,2025-04-10T08:05:00Z,Valid,Pass
+U7002,Enabled,Corp-Standard,2025-04-09T17:20:00Z,Valid,Pass
+U7003,Enabled,Corp-Restricted,2025-04-10T07:15:00Z,Valid,Pass
+U7004,Denied,Corp-Standard,2025-04-08T19:30:00Z,Expired,Fail

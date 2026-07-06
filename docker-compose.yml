@@ -1,0 +1,71 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: agentic-it-service-desk-backend
+    environment:
+      APP_ENV: ${APP_ENV:-docker}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DATABASE_URL:-}
+      DB_USER: ${DB_USER:-service_desk}
+      DB_PASSWORD: ${DB_PASSWORD:-}
+      DB_HOST: ${DB_HOST:-host.docker.internal}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-postgres}
+      DB_SSLMODE: ${DB_SSLMODE:-prefer}
+      ENABLE_SQLITE_FALLBACK: ${ENABLE_SQLITE_FALLBACK:-true}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      MISTRAL_MODEL: ${MISTRAL_MODEL:-mistral-small-latest}
+      MISTRAL_DISABLE: ${MISTRAL_DISABLE:-0}
+      MISTRAL_INSECURE_SSL: ${MISTRAL_INSECURE_SSL:-0}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-nomic-embed-text}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-huggingface}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+      KB_STORAGE_ROOT: ${KB_STORAGE_ROOT:-data/knowledge_base/uploads}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8501,http://127.0.0.1:8501}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1,backend,frontend}
+      API_KEY_REQUIRED: ${API_KEY_REQUIRED:-false}
+      BACKEND_API_KEY: ${BACKEND_API_KEY:-}
+      API_KEY_HEADER: ${API_KEY_HEADER:-X-API-Key}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    volumes:
+      - kb_uploads:/app/data/knowledge_base/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: agentic-it-service-desk-frontend
+    environment:
+      APP_ENV: ${APP_ENV:-docker}
+      BACKEND_URL: http://backend:8000
+      FRONTEND_API_KEY: ${BACKEND_API_KEY:-}
+      API_KEY_HEADER: ${API_KEY_HEADER:-X-API-Key}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8501:8501"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  kb_uploads:

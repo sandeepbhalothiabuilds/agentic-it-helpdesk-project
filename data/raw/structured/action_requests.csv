@@ -1,0 +1,3 @@
+request_id,user_id,action_type,requested_at,confirmation_status,execution_status,evidence_ref
+AR1001,U7002,Unlock Account,2025-04-10T09:05:00Z,Pending,Not Started,runbook_account_lockout#step_4
+AR1002,U7004,VPN Re-enable,2025-04-10T08:02:00Z,Pending,Blocked - Compliance Check,runbook_vpn_access#step_3

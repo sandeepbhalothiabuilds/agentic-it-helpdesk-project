@@ -1,0 +1,5 @@
+user_id,employee_id,full_name,department,location,manager,email,status,identity_verification_level
+U7001,E10231,Maya Patel,Finance,New York,R. Singh,maya.patel@company.example,Active,Standard
+U7002,E11892,Carlos Mendez,Operations,Dallas,J. Carter,carlos.mendez@company.example,Locked,Standard
+U7003,E12773,Alina Novak,Analytics,London,P. Shah,alina.novak@company.example,Active,High
+U7004,E13554,Noah Kim,Claims,Toronto,T. Wallace,noah.kim@company.example,VPN Suspended,Standard

@@ -1,0 +1,4 @@
+ticket_id,user_id,status,priority,category,created_at,assigned_group,summary
+SD9001,U7002,New,High,Account Lockout,2025-04-10T09:04:00Z,IAM Support,Workstation locked after too many failed attempts.
+SD9002,U7004,In Progress,High,VPN Access,2025-04-10T07:50:00Z,Network Access,VPN access denied for user connecting from hotel network.
+SD9003,U7001,Resolved,Medium,Password Reset,2025-04-08T15:12:00Z,IAM Support,Password reset request completed after identity verification.

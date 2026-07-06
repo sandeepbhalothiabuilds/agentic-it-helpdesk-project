@@ -1,0 +1,3 @@
+rule_id,workflow,required_verification,confirmation_required,destructive_action_block,sla_target
+RB1101,Account Lockout,employee_id + manager_name,Yes,No password reset without confirmation,15 minutes
+RB1102,VPN Access,employee_id + device_name,Yes,No VPN enable if device compliance fails,30 minutes

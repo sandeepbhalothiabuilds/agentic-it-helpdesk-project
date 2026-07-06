@@ -1,0 +1,154 @@
+compileall: passed
+..sss........................                                            [100%]
+==================================== PASSES ====================================
+_______________________ test_health_endpoint_returns_ok ________________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.008852+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-1EA7E41FD50C", "method": "GET", "path": "/health", "status_code": 200, "duration_ms": 1.84, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.010807+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/health \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/health "HTTP/1.1 200 OK"
+________________________ test_root_endpoint_returns_ok _________________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.014896+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-2B2E9C66D171", "method": "GET", "path": "/", "status_code": 200, "duration_ms": 1.32, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.016080+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/ \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/ "HTTP/1.1 200 OK"
+__________________ test_knowledge_base_search_route_delegates __________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.020276+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-D92E90C24582", "method": "GET", "path": "/knowledge-base/search", "status_code": 200, "duration_ms": 1.56, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.021956+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/knowledge-base/search?query=password&workflow=password_reset&active_only=true&limit=25 \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/knowledge-base/search?query=password&workflow=password_reset&active_only=true&limit=25 "HTTP/1.1 200 OK"
+__________________ test_knowledge_base_update_route_delegates __________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.025864+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-DF3498B8BE99", "method": "PATCH", "path": "/knowledge-base/documents/DOC-123", "status_code": 200, "duration_ms": 1.66, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.027261+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: PATCH http://testserver/knowledge-base/documents/DOC-123 \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: PATCH http://testserver/knowledge-base/documents/DOC-123 "HTTP/1.1 200 OK"
+______________ test_knowledge_base_activate_and_deactivate_routes ______________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.032181+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-D24C4819C1CE", "method": "POST", "path": "/knowledge-base/documents/DOC-123/activate", "status_code": 200, "duration_ms": 1.99, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.033625+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/knowledge-base/documents/DOC-123/activate \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+{"timestamp": "2026-07-05T15:12:48.036572+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-8CC2DDF21E67", "method": "POST", "path": "/knowledge-base/documents/DOC-123/deactivate", "status_code": 200, "duration_ms": 1.73, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.037838+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/knowledge-base/documents/DOC-123/deactivate \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/knowledge-base/documents/DOC-123/activate "HTTP/1.1 200 OK"
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/knowledge-base/documents/DOC-123/deactivate "HTTP/1.1 200 OK"
+_______________ test_knowledge_base_download_route_returns_file ________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.043955+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-ACF6CC15C817", "method": "GET", "path": "/knowledge-base/documents/DOC-123/download", "status_code": 200, "duration_ms": 1.5, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.045959+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/knowledge-base/documents/DOC-123/download \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/knowledge-base/documents/DOC-123/download "HTTP/1.1 200 OK"
+_____________________ test_request_id_header_is_preserved ______________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.048987+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-UNIT-TEST", "method": "GET", "path": "/health", "status_code": 200, "duration_ms": 0.8, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.050114+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/health \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/health "HTTP/1.1 200 OK"
+_________________ test_api_key_guard_blocks_protected_endpoint _________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.052226+00:00", "level": "WARNING", "logger": "app.requests", "message": "Unauthorized API request", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-0CAA8FE964CC", "method": "GET", "path": "/dashboard", "status_code": 401, "duration_ms": 0.04, "client": "testclient", "event": "unauthorized"}
+{"timestamp": "2026-07-05T15:12:48.053112+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/dashboard \"HTTP/1.1 401 Unauthorized\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+WARNING  app.requests:observability.py:73 Unauthorized API request
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/dashboard "HTTP/1.1 401 Unauthorized"
+_____________ test_api_key_guard_allows_public_health_without_key ______________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.056100+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-9D462DA317FD", "method": "GET", "path": "/health", "status_code": 200, "duration_ms": 0.77, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.057140+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/health \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/health "HTTP/1.1 200 OK"
+________________________ test_health_config_is_redacted ________________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.060293+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-268050717093", "method": "GET", "path": "/health/config", "status_code": 200, "duration_ms": 1.2, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.061428+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/health/config \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/health/config "HTTP/1.1 200 OK"
+__________________ test_retrieve_route_uses_search_knowledge ___________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.066885+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-8F7F5EE54F51", "method": "POST", "path": "/retrieve", "status_code": 200, "duration_ms": 1.46, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.067894+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/retrieve \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/retrieve "HTTP/1.1 200 OK"
+________________ test_chat_route_delegates_to_workflow_handler _________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.075861+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-FA5E2A1DB0C2", "method": "POST", "path": "/chat", "status_code": 200, "duration_ms": 1.68, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.077100+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/chat \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+__________________ test_retrieve_route_uses_search_knowledge ___________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.080693+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-8E5AF89F86CB", "method": "POST", "path": "/retrieve", "status_code": 200, "duration_ms": 1.46, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.081678+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/retrieve \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/retrieve "HTTP/1.1 200 OK"
+________________ test_workflow_history_endpoint_returns_history ________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.085502+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-B1D4E01F12BA", "method": "GET", "path": "/workflow/history/REQ-123", "status_code": 200, "duration_ms": 1.78, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.086858+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/workflow/history/REQ-123 \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/workflow/history/REQ-123 "HTTP/1.1 200 OK"
+________________ test_chat_route_delegates_to_workflow_handler _________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.090162+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-BF9F989D469F", "method": "POST", "path": "/chat", "status_code": 200, "duration_ms": 1.06, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.091199+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/chat \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: POST http://testserver/chat "HTTP/1.1 200 OK"
+________________ test_workflow_history_endpoint_returns_history ________________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.094120+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-BB83470236B1", "method": "GET", "path": "/workflow/history/REQ-123", "status_code": 200, "duration_ms": 0.97, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.095199+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/workflow/history/REQ-123 \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/workflow/history/REQ-123 "HTTP/1.1 200 OK"
+___________ test_workflow_sessions_endpoint_returns_recent_sessions ____________
+----------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-07-05T15:12:48.100468+00:00", "level": "INFO", "logger": "app.requests", "message": "Request completed", "service": "agentic-it-service-desk", "environment": "docker", "request_id": "REQ-E5151B709237", "method": "GET", "path": "/workflow/sessions", "status_code": 200, "duration_ms": 1.26, "client": "testclient", "event": "request_completed"}
+{"timestamp": "2026-07-05T15:12:48.101738+00:00", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/workflow/sessions?employee_id=E10231&status=completed&limit=10 \"HTTP/1.1 200 OK\"", "service": "agentic-it-service-desk", "environment": "docker"}
+------------------------------ Captured log call -------------------------------
+INFO     app.requests:observability.py:120 Request completed
+INFO     httpx:_client.py:1025 HTTP Request: GET http://testserver/workflow/sessions?employee_id=E10231&status=completed&limit=10 "HTTP/1.1 200 OK"
+=========================== short test summary info ============================
+PASSED tests/test_graph_routing.py::test_normalize_label_maps_unsupported_labels_to_clarify
+PASSED tests/test_graph_routing.py::test_confirmation_required_from_rule_defaults_safely
+PASSED tests/test_health.py::test_health_endpoint_returns_ok
+PASSED tests/test_health.py::test_root_endpoint_returns_ok
+PASSED tests/test_knowledge_base.py::test_knowledge_base_search_route_delegates
+PASSED tests/test_knowledge_base.py::test_knowledge_base_update_route_delegates
+PASSED tests/test_knowledge_base.py::test_knowledge_base_activate_and_deactivate_routes
+PASSED tests/test_knowledge_base.py::test_knowledge_base_download_route_returns_file
+PASSED tests/test_preflight_security.py::test_request_id_header_is_preserved
+PASSED tests/test_preflight_security.py::test_api_key_guard_blocks_protected_endpoint
+PASSED tests/test_preflight_security.py::test_api_key_guard_allows_public_health_without_key
+PASSED tests/test_preflight_security.py::test_health_config_is_redacted
+PASSED tests/test_preflight_security.py::test_preflight_service_reports_ready_when_checks_pass
+PASSED tests/test_retrieval.py::test_retrieve_route_uses_search_knowledge
+PASSED tests/test_retrieval.py::test_search_knowledge_ranks_hybrid_results
+PASSED tests/test_retrieval.py::test_search_knowledge_falls_back_to_lexical_when_embedding_unavailable
+PASSED tests/test_snapshot_services.py::test_dashboard_snapshot_includes_status_and_last_indexed
+PASSED tests/test_snapshot_services.py::test_admin_status_redacts_database_url_and_reports_health
+PASSED tests/test_snapshot_services.py::test_architecture_summary_wraps_system_status
+PASSED tests/test_workflow_routes.py::test_chat_route_delegates_to_workflow_handler
+PASSED tests/test_workflow_routes.py::test_retrieve_route_uses_search_knowledge
+PASSED tests/test_workflow_routes.py::test_workflow_history_endpoint_returns_history
+PASSED tests/test_workflows.py::test_chat_route_delegates_to_workflow_handler
+PASSED tests/test_workflows.py::test_workflow_history_endpoint_returns_history
+PASSED tests/test_workflows.py::test_build_chunks_script_runs_dry_run
+PASSED tests/test_workflows.py::test_workflow_sessions_endpoint_returns_recent_sessions
+SKIPPED [3] tests/test_graph_routing.py:30: langgraph is not installed in this lightweight test environment

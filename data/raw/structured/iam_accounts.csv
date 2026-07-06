@@ -1,0 +1,5 @@
+user_id,directory_account,account_status,mfa_enabled,last_password_change,failed_login_count,locked_until
+U7001,MAYA.PATEL,Active,Yes,2025-03-12,0,
+U7002,CARLOS.MENDEZ,Locked,Yes,2025-01-10,7,2025-04-10T10:00:00Z
+U7003,ALINA.NOVAK,Active,Yes,2025-02-18,1,
+U7004,NOAH.KIM,Active,No,2024-12-20,2,
