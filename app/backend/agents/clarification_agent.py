@@ -18,7 +18,7 @@ def build_clarification_response(db: Session, state: dict) -> dict:
         db=db,
         request_id=request_id,
         employee_id=employee_id,
-        node_name="clarify_response",
+        node_name="clarify",
         stage="clarification",
         outcome="needs_clarification",
         details={
@@ -32,7 +32,7 @@ def build_clarification_response(db: Session, state: dict) -> dict:
         "workflow": "clarify",
         "intent": "clarify",
         "status": "needs_clarification",
-        "current_node": "clarify_response",
+        "current_node": "clarify",
         "workflow_outcome": "needs_clarification",
         "needs_confirmation": False,
         "response": {

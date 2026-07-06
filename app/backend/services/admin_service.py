@@ -89,6 +89,25 @@ def _probe_ollama() -> dict[str, Any]:
         }
 
 
+def _safe_preflight(db: Session) -> dict[str, Any]:
+    try:
+        preflight = run_preflight_checks(db)
+        return preflight if isinstance(preflight, dict) else {"status": "unknown", "ready": False}
+    except Exception as exc:
+        return {
+            "status": "error",
+            "ready": False,
+            "summary": {"errors": 1, "warnings": 0},
+            "checks": [
+                {
+                    "name": "preflight",
+                    "status": "error",
+                    "message": str(exc),
+                }
+            ],
+        }
+
+
 def _public_config() -> dict[str, Any]:
     if hasattr(settings, "public_config"):
         try:
@@ -105,7 +124,9 @@ def _public_config() -> dict[str, Any]:
             "service_version": _setting("service_version", "0.1.0"),
             "log_level": _setting("log_level", "INFO"),
             "mistral_model": _setting("mistral_model", "mistral-small-latest"),
-            "mistral_enabled": bool(_setting("mistral_enabled", _setting("mistral_disable", "0") != "1")),
+            "mistral_enabled": bool(
+                _setting("mistral_enabled", _setting("mistral_disable", "0") != "1")
+            ),
             "mistral_key_set": bool(_setting("mistral_api_key", "")),
             "embedding_provider": EMBEDDING_PROVIDER,
             "embedding_model": get_embedding_model_name(),
@@ -133,7 +154,7 @@ def get_system_status(db: Session) -> dict[str, Any]:
 
     ollama_health = _probe_ollama()
     ollama_ok = bool(ollama_health.get("ok"))
-    preflight = run_preflight_checks(db)
+    preflight = _safe_preflight(db)
 
     counts = {
         "workflow_sessions": _safe_scalar(db, "SELECT COUNT(*) FROM case4.workflow_sessions"),
@@ -157,14 +178,22 @@ def get_system_status(db: Session) -> dict[str, Any]:
         "preflight": preflight,
     }
 
-    provider = str(EMBEDDING_PROVIDER or "").lower()
+    provider = str(config.get("embedding_provider") or EMBEDDING_PROVIDER or "").strip().lower()
     embedding_dependency_ok = ollama_ok if provider == "ollama" else True
-    config_ready = bool(preflight.get("ready"))
-    ready = database_ok and config_ready and embedding_dependency_ok
+    configuration_ready = bool(preflight.get("ready"))
 
-    if ready:
+    # Keep these two concepts separate:
+    # - status: whether the running service dependencies are healthy enough to answer requests.
+    # - ready: whether the full production preflight is satisfied.
+    #
+    # This prevents optional/preflight checks from incorrectly marking the Admin status as
+    # degraded during tests or local demos while still exposing readiness details for /ready.
+    runtime_ok = database_ok and embedding_dependency_ok
+    ready = runtime_ok and configuration_ready
+
+    if runtime_ok:
         status = "ok"
-    elif database_ok or config_ready:
+    elif database_ok:
         status = "degraded"
     else:
         status = "error"
@@ -184,7 +213,8 @@ def get_system_status(db: Session) -> dict[str, Any]:
             "ollama_message": ollama_health.get("message"),
             "embedding_provider": EMBEDDING_PROVIDER,
             "embedding_model": get_embedding_model_name(),
-            "configuration_ready": config_ready,
+            "configuration_ready": configuration_ready,
+            "runtime_ok": runtime_ok,
             "api_key_required": bool(config.get("api_key_required")),
             "api_key_configured": bool(config.get("api_key_configured")),
         },

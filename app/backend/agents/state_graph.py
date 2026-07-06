@@ -13,7 +13,7 @@ from app.backend.agents.retrieval_agent import retrieve_knowledge
 from app.backend.agents.schemas import WorkflowState
 
 ROUTE_RETRIEVE = "retrieve"
-ROUTE_CLARIFY = "clarify_response"
+ROUTE_CLARIFY = "clarify"
 ROUTE_CONFIRM = "confirm_action"
 ROUTE_EXECUTE = "execute_action"
 ROUTE_END = "end"
@@ -76,7 +76,7 @@ def build_workflow_graph(db: Session):
     graph = StateGraph(WorkflowState)
 
     graph.add_node("classify", classify)
-    graph.add_node("clarify_response", clarify)
+    graph.add_node("clarify", clarify)
     graph.add_node("retrieve", retrieve)
     graph.add_node("load_context", load_context)
     graph.add_node("confirm_action", confirm_action)
@@ -87,18 +87,18 @@ def build_workflow_graph(db: Session):
         "classify",
         _route_after_classify,
         {
-            ROUTE_CLARIFY: "clarify_response",
+            ROUTE_CLARIFY: "clarify",
             ROUTE_RETRIEVE: "retrieve",
         },
     )
-    graph.add_edge("clarify_response", END)
+    graph.add_edge("clarify", END)
     graph.add_edge("retrieve", "load_context")
     graph.add_conditional_edges(
         "load_context",
         _route_after_context,
         {
             ROUTE_CONFIRM: "confirm_action",
-            ROUTE_CLARIFY: "clarify_response",
+            ROUTE_CLARIFY: "clarify",
             ROUTE_END: END,
         },
     )

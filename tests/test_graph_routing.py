@@ -78,7 +78,7 @@ def test_graph_routes_clarify_without_retrieval(monkeypatch):
         }
     )
 
-    assert final_state["current_node"] == "clarify_response"
+    assert final_state["current_node"] == "clarify"
     assert final_state["status"] == "needs_clarification"
     assert final_state["response"]["status"] == "needs_clarification"
     assert called == {"retrieve": 0, "context": 0, "confirm": 0, "execute": 0}
