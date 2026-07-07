@@ -24,84 +24,91 @@ SEED_SQL_FILES = [
 ]
 
 
-def _existing_files(paths: Iterable[str]) -> list[Path]:
-    files: list[Path] = []
-    for path in paths:
-        candidate = ROOT / path
-        if candidate.exists():
-            files.append(candidate)
-        else:
-            print(f"[bootstrap] skipping missing file: {candidate}")
-    return files
+def _resolve(path: str | Path) -> Path:
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return candidate
+    return ROOT / candidate
 
 
-def run_sql_files(paths: Iterable[str]) -> None:
-    files = _existing_files(paths)
-    if not files:
-        print("[bootstrap] no SQL files to run")
-        return
+def _run_sql_file(path: str | Path) -> None:
+    resolved = _resolve(path)
+    if not resolved.exists():
+        raise FileNotFoundError(f"SQL file not found: {resolved}")
 
-    with engine.begin() as conn:
-        for file_path in files:
-            print(f"[bootstrap] running SQL: {file_path.relative_to(ROOT)}")
-            sql = file_path.read_text(encoding="utf-8")
-            if sql.strip():
-                conn.exec_driver_sql(sql)
+    print(f"[bootstrap] running SQL: {path}", flush=True)
+    sql = resolved.read_text(encoding="utf-8")
 
-
-def seed_structured_data() -> None:
-    from scripts.load_structured_data import seed_structured_data as load_structured
-
-    db = SessionLocal()
+    raw_connection = engine.raw_connection()
     try:
-        print("[bootstrap] loading structured CSV seed data")
-        result = load_structured(db)
-        print(f"[bootstrap] structured seed result: {result}")
+        cursor = raw_connection.cursor()
+        try:
+            cursor.execute(sql)
+        finally:
+            cursor.close()
+        raw_connection.commit()
+    except Exception:
+        raw_connection.rollback()
+        raise
     finally:
-        db.close()
+        raw_connection.close()
 
 
-def seed_knowledge_base(seed_dir: str = "data/knowledge_base/seed") -> None:
+def run_sql_files(paths: Iterable[str | Path]) -> None:
+    for path in paths:
+        _run_sql_file(path)
+
+
+def run_schema() -> None:
+    run_sql_files(SCHEMA_FILES)
+
+
+def run_seed_sql() -> None:
+    run_sql_files(SEED_SQL_FILES)
+
+
+def run_structured_seed() -> None:
+    print("[bootstrap] loading structured CSV seed data", flush=True)
+    from scripts.load_structured_data import seed_structured_data
+
+    with SessionLocal() as db:
+        result = seed_structured_data(db=db)
+    print(f"[bootstrap] structured seed result: {result}", flush=True)
+
+
+def run_knowledge_seed() -> None:
+    print("[bootstrap] ingesting knowledge base seed documents", flush=True)
     from scripts.ingest_documents import seed_documents_from_directory
 
-    db = SessionLocal()
-    try:
-        print(f"[bootstrap] ingesting knowledge documents from {seed_dir}")
-        result = seed_documents_from_directory(db, Path(seed_dir))
-        print(f"[bootstrap] knowledge seed result: {result}")
-    finally:
-        db.close()
+    seed_dir = ROOT / "data/knowledge_base/seed"
+    with SessionLocal() as db:
+        result = seed_documents_from_directory(db, seed_dir)
+    print(f"[bootstrap] knowledge seed result: {result}", flush=True)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Bootstrap the AWS PostgreSQL database for the service desk app.")
-    parser.add_argument("--schema", action="store_true", help="Run schema SQL files.")
-    parser.add_argument("--seed-sql", action="store_true", help="Run SQL seed files.")
+    parser = argparse.ArgumentParser(description="Bootstrap the Agentic IT Service Desk database.")
+    parser.add_argument("--schema", action="store_true", help="Run schema DDL files.")
+    parser.add_argument("--seed-sql", action="store_true", help="Run SQL seed file.")
     parser.add_argument("--seed-structured", action="store_true", help="Load structured CSV seed data.")
-    parser.add_argument("--seed-knowledge", action="store_true", help="Ingest seed knowledge documents.")
-    parser.add_argument(
-        "--knowledge-seed-dir",
-        default="data/knowledge_base/seed",
-        help="Directory containing seed knowledge documents.",
-    )
+    parser.add_argument("--seed-knowledge", action="store_true", help="Ingest seed knowledge-base documents.")
     args = parser.parse_args(argv)
 
-    if not any([args.schema, args.seed_sql, args.seed_structured, args.seed_knowledge]):
-        args.schema = True
-        args.seed_sql = True
-        args.seed_structured = True
-        args.seed_knowledge = True
+    run_everything = not any([args.schema, args.seed_sql, args.seed_structured, args.seed_knowledge])
 
-    if args.schema:
-        run_sql_files(SCHEMA_FILES)
-    if args.seed_sql:
-        run_sql_files(SEED_SQL_FILES)
-    if args.seed_structured:
-        seed_structured_data()
-    if args.seed_knowledge:
-        seed_knowledge_base(args.knowledge_seed_dir)
+    if args.schema or run_everything:
+        run_schema()
 
-    print("[bootstrap] complete")
+    if args.seed_sql or run_everything:
+        run_seed_sql()
+
+    if args.seed_structured or run_everything:
+        run_structured_seed()
+
+    if args.seed_knowledge or run_everything:
+        run_knowledge_seed()
+
+    print("[bootstrap] completed successfully", flush=True)
     return 0
 
 
