@@ -3,9 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from app.backend.config import settings
 from app.backend.agents.prompts import build_response_prompt
-from app.backend.llm.mistral_client import chat_completion
+from app.backend.llm.provider import active_model_name, active_provider_name, chat_completion_with_trace
 
 
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
@@ -25,7 +24,6 @@ def _build_fallback_response(state: dict, result: dict) -> str:
     name = user["full_name"] or "there"
     email = user["email"] or "your registered email address"
 
-    workflow = str(state.get("workflow") or "request").replace("_", " ").title()
     action_message = result.get("message") or "Your request has been completed."
 
     return (
@@ -38,9 +36,7 @@ def _build_fallback_response(state: dict, result: dict) -> str:
 
 
 def _enforce_email(text: str, email: str) -> tuple[str, bool]:
-    """
-    Ensures the final response visibly includes the user's real email.
-    """
+    """Ensures the final response visibly includes the user's real email."""
     if not email:
         return text, False
 
@@ -67,14 +63,15 @@ def build_final_message(state: dict, result: dict) -> tuple[str, dict[str, Any]]
         "account": state.get("account"),
         "rule": state.get("rule"),
         "evidence": state.get("evidence"),
+        "memory_context": state.get("memory_context", {}),
         "result": result,
         "required_email": user["email"],
     }
 
     llm_trace: dict[str, Any] = {
         "used": False,
-        "provider": "mistral",
-        "model": settings.mistral_model,
+        "provider": active_provider_name(),
+        "model": active_model_name(),
         "prompt_type": "final_response",
         "temperature": 0.2,
         "status": "pending",
@@ -84,30 +81,28 @@ def build_final_message(state: dict, result: dict) -> tuple[str, dict[str, Any]]
         },
     }
 
-    fallback_reason = None
-
     try:
-        raw_text = chat_completion(build_response_prompt(payload), temperature=0.2) or ""
-        final_text = raw_text.strip()
+        raw_text, provider_trace = chat_completion_with_trace(build_response_prompt(payload), temperature=0.2)
+        final_text = (raw_text or "").strip()
 
         if not final_text:
-            fallback_reason = "empty_model_response"
             final_text = _build_fallback_response(state, result)
+            provider_trace = {**provider_trace, "fallback_reason": "empty_model_response"}
 
         final_text, email_enforced = _enforce_email(final_text, user["email"])
 
         llm_trace.update(
             {
-                "used": True,
+                **provider_trace,
+                "used": bool(provider_trace.get("used", provider_trace.get("provider") != "local")),
                 "status": "success",
-                "fallback": False,
+                "fallback": bool(provider_trace.get("fallback", False)),
                 "email_enforced": email_enforced,
             }
         )
         return final_text, llm_trace
 
     except Exception as exc:
-        fallback_reason = str(exc)
         final_text = _build_fallback_response(state, result)
 
         if user["email"]:
@@ -120,7 +115,7 @@ def build_final_message(state: dict, result: dict) -> tuple[str, dict[str, Any]]
                 "used": False,
                 "status": "fallback",
                 "fallback": True,
-                "error": fallback_reason,
+                "error": str(exc),
                 "email_enforced": email_enforced,
             }
         )

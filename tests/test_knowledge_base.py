@@ -145,3 +145,29 @@ def test_knowledge_base_download_route_returns_file(monkeypatch, tmp_path):
     assert response.status_code == 200
     assert response.content == b"reset password runbook"
     assert response.headers["content-type"].startswith("text/plain")
+
+
+def test_knowledge_base_download_route_streams_s3_object(monkeypatch):
+    def fake_get_document_file_info(db, document_id):
+        return {
+            "document_id": document_id,
+            "source_document": "runbook",
+            "original_filename": "runbook.txt",
+            "mime_type": "text/plain",
+            "storage_type": "s3",
+            "storage_path": "s3://kb-bucket/knowledge-base/uploads/runbook/rev_001/runbook.txt",
+            "exists": True,
+        }
+
+    def fake_get_document_file_content(db, document_id):
+        return fake_get_document_file_info(db, document_id), b"s3 runbook content"
+
+    monkeypatch.setattr(routes_knowledge_base, "get_document_file_info", fake_get_document_file_info)
+    monkeypatch.setattr(routes_knowledge_base, "get_document_file_content", fake_get_document_file_content)
+
+    client = TestClient(app)
+    response = client.get("/knowledge-base/documents/DOC-S3/download")
+
+    assert response.status_code == 200
+    assert response.content == b"s3 runbook content"
+    assert response.headers["content-type"].startswith("text/plain")

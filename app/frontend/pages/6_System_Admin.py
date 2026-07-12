@@ -98,6 +98,12 @@ def _render_config_table(config: dict[str, Any]) -> None:
         {"setting": "ollama_model", "value": config.get("ollama_model")},
         {"setting": "database_url_redacted", "value": config.get("database_url_redacted")},
         {"setting": "kb_storage_root", "value": config.get("kb_storage_root")},
+        {"setting": "observability_enabled", "value": config.get("observability_enabled")},
+        {"setting": "observability_emf_enabled", "value": config.get("observability_emf_enabled")},
+        {"setting": "observability_namespace", "value": config.get("observability_namespace")},
+        {"setting": "observability_redact_payloads", "value": config.get("observability_redact_payloads")},
+        {"setting": "observability_trace_prompts", "value": config.get("observability_trace_prompts")},
+        {"setting": "observability_sample_rate", "value": config.get("observability_sample_rate")},
     ]
     render_table(
         config_rows,
@@ -156,6 +162,7 @@ try:
     db_health = _safe_dict(health.get("database"))
     ollama_health = _safe_dict(health.get("ollama"))
     preflight = _safe_dict(payload.get("preflight") or health.get("preflight"))
+    observability = _safe_dict(health.get("observability"))
 
     embedding_provider = _safe_text(config.get("embedding_provider"), "unknown").lower()
     ollama_required = embedding_provider == "ollama"
@@ -196,18 +203,36 @@ try:
     section_heading("Runtime counts", "Core operating totals across workflows, retrieval, tickets, audit, and documents.")
     _render_counts(counts)
 
-    tabs = st.tabs(["Preflight", "Configuration", "Counts Table", "Health Details", "Proof", "Raw"])
+    tabs = st.tabs(["Preflight", "Observability", "Configuration", "Counts Table", "Health Details", "Proof", "Raw"])
     with tabs[0]:
         _render_preflight(preflight)
     with tabs[1]:
-        _render_config_table(config)
+        obs_cols = st.columns(4)
+        with obs_cols[0]:
+            status_card("Telemetry", "enabled" if observability.get("enabled") else "disabled", detail=_safe_text(observability.get("message"), "Telemetry status"))
+        with obs_cols[1]:
+            status_card("CloudWatch EMF", "enabled" if observability.get("cloudwatch_emf_enabled") else "disabled", detail="Custom metrics from structured logs")
+        with obs_cols[2]:
+            value_card("Namespace", observability.get("namespace", "AgenticITServiceDesk"), detail="CloudWatch metric namespace")
+        with obs_cols[3]:
+            value_card("Sample Rate", observability.get("sample_rate", 1.0), detail="Telemetry event sampling")
+        render_table(
+            [
+                {"setting": key, "value": value}
+                for key, value in observability.items()
+            ],
+            empty_title="No observability status",
+            empty_text="The admin endpoint did not return observability status.",
+        )
     with tabs[2]:
-        render_table(_count_rows(counts), empty_title="No count data", empty_text="The admin endpoint did not return counts.")
+        _render_config_table(config)
     with tabs[3]:
-        st.json(health)
+        render_table(_count_rows(counts), empty_title="No count data", empty_text="The admin endpoint did not return counts.")
     with tabs[4]:
-        st.json(proof)
+        st.json(health)
     with tabs[5]:
+        st.json(proof)
+    with tabs[6]:
         st.json(payload)
 
 except Exception as exc:

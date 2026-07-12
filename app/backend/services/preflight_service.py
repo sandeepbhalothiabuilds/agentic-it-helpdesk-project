@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.backend.config import settings
+from app.backend.config import settings, truthy
 
 REQUIRED_TABLES = [
     "users",
@@ -36,6 +36,10 @@ def _check(name: str, status: str, message: str, *, details: dict[str, Any] | No
         "message": message,
         "details": details or {},
     }
+
+
+def _setting(name: str, default: Any = None) -> Any:
+    return getattr(settings, name, default)
 
 
 def _scalar(db: Session, sql: str, params: dict[str, Any] | None = None) -> Any:
@@ -88,34 +92,136 @@ def _check_required_tables(db: Session) -> dict[str, Any]:
     return _check("required_tables", "pass", "All required case4 tables are present.", details={"checked": checked})
 
 
+def _llm_provider() -> str:
+    return str(_setting("llm_provider_normalized", _setting("llm_provider", "mistral")) or "mistral").lower()
+
+
+def _agent_runtime_provider() -> str:
+    return str(_setting("agent_runtime_provider_normalized", _setting("agent_runtime_provider", "local")) or "local").lower()
+
+
 def _check_configuration() -> dict[str, Any]:
     warnings: list[str] = []
     errors: list[str] = []
 
-    has_database = bool(settings.database_url_env or settings.db_password)
+    has_database = bool(_setting("database_url_env", "") or _setting("db_password", ""))
     if not has_database:
         errors.append("Set DATABASE_URL or DB_PASSWORD.")
 
-    if settings.mistral_enabled and not settings.mistral_api_key:
-        warnings.append("MISTRAL_API_KEY is not set. The local fallback may be used.")
+    provider = _llm_provider()
+    if provider == "bedrock":
+        if not _setting("aws_region", ""):
+            errors.append("Set AWS_REGION when LLM_PROVIDER=bedrock.")
+        if not _setting("bedrock_text_model_id", ""):
+            errors.append("Set BEDROCK_TEXT_MODEL_ID when LLM_PROVIDER=bedrock.")
+    elif provider == "mistral":
+        mistral_enabled = bool(_setting("mistral_enabled", not truthy(_setting("mistral_disable", "0"))))
+        if mistral_enabled and not _setting("mistral_api_key", ""):
+            warnings.append("MISTRAL_API_KEY is not set. The local fallback may be used.")
+    elif provider == "local":
+        warnings.append("LLM_PROVIDER=local is only recommended for development or smoke tests.")
+    else:
+        warnings.append(f"Unknown LLM_PROVIDER '{provider}'. The provider facade will fall back to Mistral/local behavior.")
 
-    if settings.api_key_required and not settings.api_key:
+    embedding_provider = str(_setting("embedding_provider_normalized", _setting("embedding_provider", "huggingface")) or "huggingface").lower()
+    if embedding_provider == "bedrock":
+        if not _setting("aws_region", ""):
+            errors.append("Set AWS_REGION when EMBEDDING_PROVIDER=bedrock.")
+        if not _setting("bedrock_embedding_model_id", ""):
+            errors.append("Set BEDROCK_EMBEDDING_MODEL_ID when EMBEDDING_PROVIDER=bedrock.")
+
+    retrieval_provider = str(_setting("retrieval_provider_normalized", _setting("retrieval_provider", "db")) or "db").lower()
+    if retrieval_provider == "bedrock_kb":
+        if not _setting("aws_region", ""):
+            errors.append("Set AWS_REGION when RETRIEVAL_PROVIDER=bedrock_kb.")
+        if not _setting("bedrock_knowledge_base_id", ""):
+            errors.append("Set BEDROCK_KNOWLEDGE_BASE_ID when RETRIEVAL_PROVIDER=bedrock_kb.")
+
+    storage_backend = str(_setting("kb_storage_backend_normalized", _setting("kb_storage_backend", "local")) or "local").lower()
+    if storage_backend == "s3" and not _setting("kb_s3_bucket", ""):
+        errors.append("Set KB_S3_BUCKET when KB_STORAGE_BACKEND=s3.")
+
+    agent_provider = _agent_runtime_provider()
+    if agent_provider == "agentcore" and not _setting("agentcore_runtime_arn", ""):
+        if bool(_setting("agentcore_local_fallback_enabled", truthy(_setting("agentcore_fallback_to_local", "1"), default=True))):
+            warnings.append("AGENT_RUNTIME_PROVIDER=agentcore but AGENTCORE_RUNTIME_ARN is missing; local fallback is enabled.")
+        else:
+            errors.append("Set AGENTCORE_RUNTIME_ARN when AGENT_RUNTIME_PROVIDER=agentcore.")
+
+    memory_enabled = bool(_setting("agentcore_memory_is_enabled", truthy(_setting("agentcore_memory_enabled", "0"), default=False)))
+    if memory_enabled and not _setting("agentcore_memory_id", ""):
+        errors.append("Set AGENTCORE_MEMORY_ID when AGENTCORE_MEMORY_ENABLED=true.")
+
+    gateway_enabled = bool(_setting("agentcore_gateway_is_enabled", truthy(_setting("agentcore_gateway_enabled", "0"), default=False)))
+    if gateway_enabled and not _setting("agentcore_gateway_url", ""):
+        if bool(_setting("agentcore_gateway_mock_fallback_enabled", truthy(_setting("agentcore_gateway_fallback_to_mock", "1"), default=True))):
+            warnings.append("AGENTCORE_GATEWAY_ENABLED=true but AGENTCORE_GATEWAY_URL is missing; local mock fallback is enabled.")
+        else:
+            errors.append("Set AGENTCORE_GATEWAY_URL when AGENTCORE_GATEWAY_ENABLED=true.")
+
+    identity_enabled = bool(_setting("agentcore_identity_is_enabled", truthy(_setting("agentcore_identity_enabled", "0"), default=False)))
+    if identity_enabled and not (_setting("agentcore_gateway_bearer_token", "") or _setting("agentcore_gateway_api_key", "")):
+        errors.append("Set AGENTCORE_GATEWAY_BEARER_TOKEN or AGENTCORE_GATEWAY_API_KEY when AGENTCORE_IDENTITY_ENABLED=true.")
+
+    if _setting("api_key_required", False) and not _setting("api_key", ""):
         errors.append("REQUIRE_API_KEY is enabled but APP_API_KEY is empty.")
 
-    if not settings.cors_origins():
+    observability_enabled = bool(_setting("observability_is_enabled", truthy(_setting("observability_enabled", "1"), default=True)))
+    emf_enabled = bool(_setting("observability_emf_logging_enabled", truthy(_setting("observability_emf_enabled", "0"), default=False)))
+    namespace = str(_setting("observability_namespace", "AgenticITServiceDesk") or "AgenticITServiceDesk").strip()
+    if observability_enabled and not namespace:
+        warnings.append("OBSERVABILITY_NAMESPACE is empty; CloudWatch metrics will use the default namespace.")
+    if str(_setting("app_env", "local")).lower() in {"prod", "production", "aws"} and observability_enabled and not emf_enabled:
+        warnings.append("OBSERVABILITY_EMF_ENABLED is disabled in an AWS-like environment; CloudWatch custom metrics will not be emitted.")
+
+    cors_origins = []
+    if hasattr(settings, "cors_origins"):
+        try:
+            cors_origins = settings.cors_origins()
+        except Exception:
+            cors_origins = []
+    if not cors_origins:
         warnings.append("No CORS origins are configured.")
 
-    if not settings.kb_storage_root:
+    if storage_backend == "local" and not _setting("kb_storage_root", ""):
         warnings.append("KB_STORAGE_ROOT is empty.")
 
     details = {
         "database_configured": has_database,
-        "mistral_enabled": settings.mistral_enabled,
-        "mistral_key_set": bool(settings.mistral_api_key),
-        "api_key_required": settings.api_key_required,
-        "api_key_configured": bool(settings.api_key),
-        "cors_allowed_origins": settings.cors_origins(),
-        "kb_storage_root": settings.kb_storage_root,
+        "llm_provider": provider,
+        "mistral_enabled": bool(_setting("mistral_enabled", not truthy(_setting("mistral_disable", "0")))),
+        "mistral_key_set": bool(_setting("mistral_api_key", "")),
+        "aws_region": _setting("aws_region", ""),
+        "bedrock_text_model_id": _setting("bedrock_text_model_id", ""),
+        "bedrock_configured": bool(_setting("bedrock_configured", False)),
+        "embedding_provider": embedding_provider,
+        "bedrock_embedding_model_id": _setting("bedrock_embedding_model_id", ""),
+        "bedrock_embedding_configured": bool(_setting("bedrock_embedding_configured", False)),
+        "retrieval_provider": retrieval_provider,
+        "bedrock_knowledge_base_id": _setting("bedrock_knowledge_base_id", ""),
+        "bedrock_kb_configured": bool(_setting("bedrock_kb_configured", False)),
+        "kb_storage_backend": storage_backend,
+        "kb_s3_bucket_set": bool(_setting("kb_s3_bucket", "")),
+        "kb_s3_prefix": _setting("kb_s3_prefix", "knowledge-base/uploads"),
+        "agent_runtime_provider": agent_provider,
+        "agentcore_runtime_arn_set": bool(_setting("agentcore_runtime_arn", "")),
+        "agentcore_fallback_to_local": bool(_setting("agentcore_local_fallback_enabled", truthy(_setting("agentcore_fallback_to_local", "1"), default=True))),
+        "agentcore_memory_enabled": memory_enabled,
+        "agentcore_memory_id_set": bool(_setting("agentcore_memory_id", "")),
+        "agentcore_memory_write_events": bool(_setting("agentcore_memory_write_enabled", truthy(_setting("agentcore_memory_write_events", "1"), default=True))),
+        "agentcore_gateway_enabled": gateway_enabled,
+        "agentcore_gateway_url_set": bool(_setting("agentcore_gateway_url", "")),
+        "agentcore_gateway_fallback_to_mock": bool(_setting("agentcore_gateway_mock_fallback_enabled", truthy(_setting("agentcore_gateway_fallback_to_mock", "1"), default=True))),
+        "agentcore_identity_enabled": identity_enabled,
+        "agentcore_identity_configured": bool(_setting("agentcore_gateway_bearer_token", "") or _setting("agentcore_gateway_api_key", "")),
+        "api_key_required": bool(_setting("api_key_required", False)),
+        "api_key_configured": bool(_setting("api_key", "")),
+        "observability_enabled": bool(_setting("observability_is_enabled", truthy(_setting("observability_enabled", "1"), default=True))),
+        "observability_emf_enabled": bool(_setting("observability_emf_logging_enabled", truthy(_setting("observability_emf_enabled", "0"), default=False))),
+        "observability_namespace": _setting("observability_namespace", "AgenticITServiceDesk"),
+        "observability_redact_payloads": bool(_setting("observability_payload_redaction_enabled", truthy(_setting("observability_redact_payloads", "1"), default=True))),
+        "cors_allowed_origins": cors_origins,
+        "kb_storage_root": _setting("kb_storage_root", ""),
         "warnings": warnings,
         "errors": errors,
     }
@@ -128,15 +234,36 @@ def _check_configuration() -> dict[str, Any]:
 
 
 def _check_storage() -> dict[str, Any]:
-    root = Path(settings.kb_storage_root)
+    storage_backend = str(_setting("kb_storage_backend_normalized", _setting("kb_storage_backend", "local")) or "local").lower()
+    if storage_backend == "s3":
+        bucket = str(_setting("kb_s3_bucket", "") or "").strip()
+        if not bucket:
+            return _check(
+                "knowledge_storage",
+                "error",
+                "S3 knowledge-base storage is selected but KB_S3_BUCKET is empty.",
+                details={"storage_backend": "s3", "bucket_set": False},
+            )
+        return _check(
+            "knowledge_storage",
+            "pass",
+            "S3 knowledge-base storage is configured. IAM access is validated during upload/download.",
+            details={
+                "storage_backend": "s3",
+                "bucket_set": True,
+                "prefix": _setting("kb_s3_prefix", "knowledge-base/uploads"),
+            },
+        )
+
+    root = Path(_setting("kb_storage_root", "data/knowledge_base/uploads"))
     try:
         root.mkdir(parents=True, exist_ok=True)
         writable_probe = root / ".write_probe"
         writable_probe.write_text("ok", encoding="utf-8")
         writable_probe.unlink(missing_ok=True)
-        return _check("knowledge_storage", "pass", "Knowledge-base storage is writable.", details={"path": str(root)})
+        return _check("knowledge_storage", "pass", "Knowledge-base storage is writable.", details={"storage_backend": "local", "path": str(root)})
     except Exception as exc:
-        return _check("knowledge_storage", "error", "Knowledge-base storage is not writable.", details={"path": str(root), "error": str(exc)})
+        return _check("knowledge_storage", "error", "Knowledge-base storage is not writable.", details={"storage_backend": "local", "path": str(root), "error": str(exc)})
 
 
 def _check_knowledge_base_counts(db: Session) -> dict[str, Any]:

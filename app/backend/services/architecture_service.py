@@ -5,7 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.backend.config import settings
+from app.backend.llm.provider import active_model_name, active_provider_name
 from app.backend.services.admin_service import get_system_status
 
 
@@ -13,15 +13,28 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _provider_source(provider: str) -> str:
+    if provider == "bedrock":
+        return "Amazon Bedrock"
+    if provider == "local":
+        return "Local fallback"
+    return "Mistral"
+
+
 def get_architecture_summary(db: Session) -> dict[str, Any]:
     system = get_system_status(db)
+    config = system.get("config", {}) if isinstance(system, dict) else {}
+    llm_provider = str(config.get("llm_provider") or active_provider_name())
+    llm_model = str(config.get("llm_model") or active_model_name())
+    agent_runtime = str(config.get("agent_runtime_provider") or "local")
+    runtime_source = "Amazon Bedrock AgentCore Runtime" if agent_runtime == "agentcore" else "FastAPI + LangGraph"
 
     agents = [
         {
             "name": "Intent Agent",
             "responsibility": "Classifies the user request into a supported IT workflow.",
-            "model": settings.mistral_model,
-            "source": "Mistral",
+            "model": llm_model,
+            "source": _provider_source(llm_provider),
         },
         {
             "name": "Retrieval Agent",
@@ -33,45 +46,76 @@ def get_architecture_summary(db: Session) -> dict[str, Any]:
             "name": "Context Agent",
             "responsibility": "Loads employee, account, and rule context from PostgreSQL.",
             "model": "database lookup",
-            "source": "PostgreSQL",
+            "source": "PostgreSQL / Amazon RDS",
         },
         {
             "name": "Confirmation Agent",
             "responsibility": "Applies the approval gate before any sensitive action is executed.",
-            "model": "workflow logic",
-            "source": "LangGraph",
+            "model": "workflow policy",
+            "source": runtime_source,
         },
         {
             "name": "Execution Agent",
-            "responsibility": "Invokes the IAM tool and writes audit records.",
+            "responsibility": "Invokes IAM tooling and writes audit records.",
             "model": "tool execution",
-            "source": "Workflow toolchain",
+            "source": "AgentCore Gateway" if config.get("agentcore_gateway_enabled") else "Local mock IAM toolchain",
         },
         {
             "name": "Response Agent",
             "responsibility": "Turns the operational result into a user-friendly final answer.",
-            "model": settings.mistral_model,
-            "source": "Mistral",
+            "model": llm_model,
+            "source": _provider_source(llm_provider),
         },
         {
             "name": "Ticket Agent",
             "responsibility": "Creates the service ticket after approval and execution.",
             "model": "Service desk logic",
-            "source": "PostgreSQL",
+            "source": "PostgreSQL / Amazon RDS",
+        },
+        {
+            "name": "AgentCore Memory",
+            "responsibility": "Stores governed conversation turns and optional long-term memory context for agent sessions.",
+            "model": "managed memory",
+            "source": "Amazon Bedrock AgentCore Memory" if config.get("agentcore_memory_enabled") else "disabled",
+        },
+        {
+            "name": "AgentCore Gateway",
+            "responsibility": "Provides the migration path from mock IAM tools to governed enterprise tool access.",
+            "model": "managed tool gateway",
+            "source": "Amazon Bedrock AgentCore Gateway" if config.get("agentcore_gateway_enabled") else "disabled",
+        },
+        {
+            "name": "Observability Layer",
+            "responsibility": "Emits JSON events and optional CloudWatch Embedded Metrics for LLM, retrieval, memory, gateway, and workflow operations.",
+            "model": config.get("observability_namespace") or "AgenticITServiceDesk",
+            "source": "CloudWatch EMF" if config.get("observability_emf_enabled") else "structured application logs",
         },
     ]
 
-    flow = [
-        "1. User submits a request in Streamlit.",
-        "2. FastAPI receives the request and starts the LangGraph workflow.",
-        "3. Intent Agent classifies the workflow.",
-        "4. Retrieval Agent fetches the best chunks from PostgreSQL.",
-        "5. Context Agent loads the employee and account context.",
-        "6. Confirmation Agent requests approval if required.",
-        "7. Execution Agent performs the IAM action.",
-        "8. Response Agent uses Mistral to craft the final user-facing response.",
-        "9. Ticket creation and audit logging persist the operational record.",
-    ]
+    if agent_runtime == "agentcore":
+        flow = [
+            "1. User submits a request in Streamlit.",
+            "2. FastAPI validates the request and delegates the agent session to Amazon Bedrock AgentCore Runtime.",
+            "3. AgentCore maintains the runtime session and invokes the LangGraph-compatible agent package.",
+            "4. Amazon Bedrock provides the LLM calls for intent and final response generation.",
+            "5. AgentCore Memory can provide prior session context to the agent payload.",
+            "6. AgentCore Gateway can execute governed enterprise tools instead of local mock tools.",
+            "7. Retrieval, context, approval, execution, ticketing, and audit events are returned to FastAPI for persistence.",
+            "8. Streamlit displays the final response, evidence, ticket state, and workflow proof.",
+        ]
+    else:
+        flow = [
+            "1. User submits a request in Streamlit.",
+            "2. FastAPI receives the request and starts the local LangGraph workflow.",
+            "3. Intent Agent classifies the workflow using the configured LLM provider.",
+            "4. AgentCore Memory optionally retrieves prior context for continuity.",
+            "5. Retrieval Agent fetches the best chunks from the configured retrieval provider.",
+            "6. Context Agent loads the employee and account context.",
+            "7. Confirmation Agent requests approval if required.",
+            "8. Execution Agent performs the IAM action through AgentCore Gateway when configured, otherwise through the local mock tool.",
+            "9. Response Agent uses the configured LLM provider to craft the final user-facing response.",
+            "10. Ticket creation, audit logging, and telemetry persist the operational record and emit runtime metrics.",
+        ]
 
     return {
         "status": system.get("status", "unknown"),
@@ -81,7 +125,16 @@ def get_architecture_summary(db: Session) -> dict[str, Any]:
         "flow": flow,
         "proof": {
             "llm_used_for_final_response": True,
-            "llm_model": settings.mistral_model,
+            "llm_provider": llm_provider,
+            "llm_model": llm_model,
+            "agent_runtime_provider": agent_runtime,
+            "agentcore_enabled": bool(config.get("agentcore_enabled")),
+            "agentcore_memory_enabled": bool(config.get("agentcore_memory_enabled")),
+            "agentcore_gateway_enabled": bool(config.get("agentcore_gateway_enabled")),
+            "agentcore_identity_enabled": bool(config.get("agentcore_identity_enabled")),
+            "observability_enabled": bool(config.get("observability_enabled")),
+            "observability_emf_enabled": bool(config.get("observability_emf_enabled")),
+            "observability_namespace": config.get("observability_namespace"),
             "embedding_provider": system["config"].get("embedding_provider"),
             "embedding_model": system["config"].get("embedding_model"),
         },

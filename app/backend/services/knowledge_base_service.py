@@ -11,6 +11,7 @@ from app.backend.services.document_ingest_service import (
     ingest_document_revision,
     refresh_active_vector_store,
 )
+from app.backend.storage.s3_storage import get_object_bytes, get_object_info, presign_get_url
 
 
 def _now() -> datetime:
@@ -357,14 +358,75 @@ def get_document_file_info(db: Session, document_id: str) -> dict[str, Any] | No
     if not row:
         return None
 
-    storage_path = Path(str(row.get("storage_path") or ""))
+    storage_type = str(row.get("storage_type") or "local").strip().lower()
+    storage_path_value = str(row.get("storage_path") or "")
+    mime_type = row.get("mime_type") or "application/octet-stream"
+
+    if storage_type == "s3" or storage_path_value.startswith("s3://"):
+        try:
+            object_info = get_object_info(storage_path_value)
+            exists = bool(object_info.get("exists"))
+        except Exception as exc:
+            object_info = {"exists": False, "error": str(exc)}
+            exists = False
+        return {
+            "document_id": row.get("document_id"),
+            "source_document": row.get("source_document"),
+            "original_filename": row.get("original_filename"),
+            "mime_type": mime_type,
+            "storage_type": "s3",
+            "storage_path": storage_path_value,
+            "exists": exists,
+            "s3": object_info,
+        }
+
+    storage_path = Path(storage_path_value)
     return {
         "document_id": row.get("document_id"),
         "source_document": row.get("source_document"),
         "original_filename": row.get("original_filename"),
-        "mime_type": row.get("mime_type") or "application/octet-stream",
+        "mime_type": mime_type,
+        "storage_type": "local",
         "storage_path": storage_path,
         "exists": storage_path.exists(),
+    }
+
+
+def get_document_file_content(db: Session, document_id: str) -> tuple[dict[str, Any], bytes] | None:
+    file_info = get_document_file_info(db, document_id)
+    if not file_info or not file_info.get("exists"):
+        return None
+
+    storage_type = str(file_info.get("storage_type") or "local").lower()
+    if storage_type == "s3":
+        return file_info, get_object_bytes(str(file_info["storage_path"]))
+
+    storage_path = file_info.get("storage_path")
+    if not isinstance(storage_path, Path):
+        storage_path = Path(str(storage_path or ""))
+    return file_info, storage_path.read_bytes()
+
+
+def get_document_download_url(db: Session, document_id: str) -> dict[str, Any] | None:
+    file_info = get_document_file_info(db, document_id)
+    if not file_info or not file_info.get("exists"):
+        return None
+
+    if str(file_info.get("storage_type") or "local").lower() != "s3":
+        return {
+            "status": "local_only",
+            "document_id": document_id,
+            "message": "Local files are downloaded through the backend download endpoint.",
+        }
+
+    return {
+        "status": "ok",
+        "document_id": document_id,
+        "storage_type": "s3",
+        "url": presign_get_url(str(file_info["storage_path"])),
+        "expires_in_seconds": 900,
+        "filename": file_info.get("original_filename"),
+        "mime_type": file_info.get("mime_type"),
     }
 
 

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,7 @@ from app.backend.db.session import get_db
 from app.backend.services.knowledge_base_service import (
     activate_document_revision,
     deactivate_document_revision,
+    get_document_file_content,
     get_document_file_info,
     get_document_revision,
     get_knowledge_base_snapshot,
@@ -157,12 +158,30 @@ def knowledge_base_document_download(
     if not file_info:
         raise HTTPException(status_code=404, detail=f"Document revision '{document_id}' was not found.")
 
-    storage_path = file_info["storage_path"]
-    if not isinstance(storage_path, Path) or not file_info.get("exists"):
+    if not file_info.get("exists"):
         raise HTTPException(
             status_code=404,
             detail=f"Stored file for document revision '{document_id}' was not found.",
         )
+
+    if str(file_info.get("storage_type") or "local").lower() == "s3":
+        payload = get_document_file_content(db, document_id)
+        if not payload:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Stored file for document revision '{document_id}' was not found.",
+            )
+        content_info, content = payload
+        filename = str(content_info.get("original_filename") or f"{document_id}.bin")
+        return StreamingResponse(
+            iter([content]),
+            media_type=str(content_info.get("mime_type") or "application/octet-stream"),
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    storage_path = file_info["storage_path"]
+    if not isinstance(storage_path, Path):
+        storage_path = Path(str(storage_path or ""))
 
     return FileResponse(
         path=str(storage_path),

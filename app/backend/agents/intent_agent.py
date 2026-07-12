@@ -9,7 +9,7 @@ from app.backend.agents.common import (
     safe_log_workflow_event,
 )
 from app.backend.agents.prompts import build_classification_prompt
-from app.backend.llm.mistral_client import chat_completion
+from app.backend.llm.provider import chat_completion
 
 
 def classify_intent(db: Session, state: dict) -> dict:

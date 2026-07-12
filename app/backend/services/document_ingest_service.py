@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
-import os
 import re
 from datetime import datetime, timezone
 from io import BytesIO
@@ -13,11 +12,13 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.backend.config import settings
 from app.backend.db.models import DocumentChunk
 from app.backend.rag.chunking import chunk_text
 from app.backend.rag.embedding_service import embed_text, get_embedding_model_name
+from app.backend.storage.s3_storage import build_s3_key, get_object_bytes, put_object_bytes
 
-KB_STORAGE_ROOT = Path(os.getenv("KB_STORAGE_ROOT", "data/knowledge_base/uploads"))
+KB_STORAGE_ROOT = Path(settings.kb_storage_root)
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt", ".md"}
 
 
@@ -107,7 +108,14 @@ def extract_text_from_uploaded_file(filename: str, content: bytes) -> str:
     return _extract_text_from_plain_text(content)
 
 
-def _save_document_file(
+def _selected_storage_type(storage_type: str | None = None) -> str:
+    requested = (storage_type or "").strip().lower()
+    if requested in {"local", "s3"}:
+        return requested
+    return settings.kb_storage_backend_normalized
+
+
+def _save_local_document_file(
     *,
     source_document: str,
     revision_number: int,
@@ -116,12 +124,60 @@ def _save_document_file(
 ) -> Path:
     safe_source = _sanitize_name(source_document)
     safe_original = _sanitize_name(original_filename)
-    target_dir = KB_STORAGE_ROOT / safe_source / f"rev_{revision_number:03d}"
+    target_dir = Path(settings.kb_storage_root) / safe_source / f"rev_{revision_number:03d}"
     target_dir.mkdir(parents=True, exist_ok=True)
 
     target_path = target_dir / safe_original
     target_path.write_bytes(content)
     return target_path
+
+
+def _save_document_file(
+    *,
+    source_document: str,
+    revision_number: int,
+    original_filename: str,
+    content: bytes,
+    mime_type: str | None = None,
+    file_hash: str | None = None,
+    storage_type: str | None = None,
+) -> tuple[str, str]:
+    selected_storage = _selected_storage_type(storage_type)
+    if selected_storage == "s3":
+        safe_source = _sanitize_name(source_document)
+        safe_original = _sanitize_name(original_filename)
+        key = build_s3_key(safe_source, f"rev_{revision_number:03d}", safe_original)
+        ref = put_object_bytes(
+            content=content,
+            key=key,
+            content_type=mime_type or mimetypes.guess_type(original_filename)[0],
+            metadata={
+                "source_document": source_document,
+                "original_filename": original_filename,
+                "revision_number": str(revision_number),
+                "file_hash": file_hash or hashlib.sha256(content).hexdigest(),
+            },
+        )
+        return "s3", ref.uri
+
+    target_path = _save_local_document_file(
+        source_document=source_document,
+        revision_number=revision_number,
+        original_filename=original_filename,
+        content=content,
+    )
+    return "local", str(target_path)
+
+
+def _read_stored_document(storage_type: str | None, storage_path: str) -> bytes:
+    selected_storage = (storage_type or "local").strip().lower()
+    if selected_storage == "s3" or str(storage_path).startswith("s3://"):
+        return get_object_bytes(storage_path)
+
+    path = Path(storage_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Missing file at {storage_path}")
+    return path.read_bytes()
 
 
 def _deactivate_existing_document_state(db: Session, source_document: str) -> None:
@@ -284,6 +340,7 @@ def _insert_document_chunks(
     workflow: str,
     revision_number: int,
     file_hash: str,
+    storage_type: str,
     storage_path: str,
     uploaded_by: str,
     chunks: list[str],
@@ -315,6 +372,7 @@ def _insert_document_chunks(
                 "workflow": workflow,
                 "revision_number": revision_number,
                 "file_hash": file_hash,
+                "storage_type": storage_type,
                 "storage_path": storage_path,
                 "uploaded_by": uploaded_by,
             },
@@ -337,14 +395,9 @@ def ingest_document_revision(
     uploaded_by: str = "system",
     source_document_name: str | None = None,
     mime_type: str | None = None,
-    storage_type: str = "local",
+    storage_type: str = "auto",
 ) -> dict[str, Any]:
-    """
-    Ingest a new document or a new revision of an existing document.
-
-    The logical document identity is source_document_name if provided,
-    otherwise the filename stem.
-    """
+    """Ingest a new document or a new revision of an existing document."""
     if not content:
         raise ValueError("Uploaded file is empty.")
 
@@ -355,6 +408,8 @@ def ingest_document_revision(
 
     selected_workflow = (workflow or "").strip() or _infer_workflow_from_filename(original_filename)
     file_hash = hashlib.sha256(content).hexdigest()
+    selected_mime_type = mime_type or mimetypes.guess_type(original_filename)[0]
+    selected_storage_type = _selected_storage_type(storage_type)
 
     active_row = _latest_active_document_row(db, logical_source_document)
     if active_row and str(active_row.get("file_hash") or "") == file_hash:
@@ -367,6 +422,8 @@ def ingest_document_revision(
             "workflow": active_row.get("workflow") or selected_workflow,
             "revision_number": active_row.get("revision_number"),
             "file_hash": file_hash,
+            "storage_type": active_row.get("storage_type") or selected_storage_type,
+            "storage_type": active_row.get("storage_type"),
             "storage_path": active_row.get("storage_path"),
             "chunks_inserted": 0,
             "embedding_model": get_embedding_model_name(),
@@ -375,11 +432,14 @@ def ingest_document_revision(
     revision_number = _latest_revision_number(db, logical_source_document) + 1
     document_id = f"DOC-{uuid4().hex[:10].upper()}"
 
-    storage_path = _save_document_file(
+    actual_storage_type, storage_path = _save_document_file(
         source_document=logical_source_document,
         revision_number=revision_number,
         original_filename=original_filename,
         content=content,
+        mime_type=selected_mime_type,
+        file_hash=file_hash,
+        storage_type=selected_storage_type,
     )
 
     extracted_text = extract_text_from_uploaded_file(original_filename, content)
@@ -404,9 +464,9 @@ def ingest_document_revision(
             workflow=selected_workflow,
             revision_number=revision_number,
             file_hash=file_hash,
-            storage_type=storage_type,
-            storage_path=str(storage_path),
-            mime_type=mime_type or mimetypes.guess_type(original_filename)[0],
+            storage_type=actual_storage_type,
+            storage_path=storage_path,
+            mime_type=selected_mime_type,
             uploaded_by=uploaded_by,
         )
 
@@ -418,7 +478,8 @@ def ingest_document_revision(
             workflow=selected_workflow,
             revision_number=revision_number,
             file_hash=file_hash,
-            storage_path=str(storage_path),
+            storage_type=actual_storage_type,
+            storage_path=storage_path,
             uploaded_by=uploaded_by,
             chunks=chunks,
         )
@@ -434,8 +495,8 @@ def ingest_document_revision(
             "workflow": selected_workflow,
             "revision_number": revision_number,
             "file_hash": file_hash,
-            "storage_type": storage_type,
-            "storage_path": str(storage_path),
+            "storage_type": actual_storage_type,
+            "storage_path": storage_path,
             "chunks_inserted": inserted,
             "embedding_model": get_embedding_model_name(),
         }
@@ -445,10 +506,7 @@ def ingest_document_revision(
 
 
 def refresh_active_vector_store(db: Session) -> dict[str, Any]:
-    """
-    Rebuild the vector store from the active knowledge_documents table.
-    This is what the UI's Refresh Vector Store button should call.
-    """
+    """Rebuild the vector store from active knowledge_documents rows."""
     rows = db.execute(
         text(
             """
@@ -476,24 +534,27 @@ def refresh_active_vector_store(db: Session) -> dict[str, Any]:
 
     for row in rows:
         record = dict(row)
-        path = Path(record["storage_path"])
-
-        if not path.exists():
+        try:
+            content = _read_stored_document(record.get("storage_type"), str(record["storage_path"]))
+        except Exception as exc:
             skipped_documents.append(
                 {
                     "source_document": record["source_document"],
-                    "reason": f"Missing file at {record['storage_path']}",
+                    "reason": str(exc),
+                    "storage_type": record.get("storage_type") or "local",
+                    "storage_path": record.get("storage_path"),
                 }
             )
             continue
 
-        content = path.read_bytes()
         extracted_text = extract_text_from_uploaded_file(record["original_filename"], content)
         if not extracted_text.strip():
             skipped_documents.append(
                 {
                     "source_document": record["source_document"],
                     "reason": "No text could be extracted",
+                    "storage_type": record.get("storage_type") or "local",
+                    "storage_path": record.get("storage_path"),
                 }
             )
             continue
@@ -504,6 +565,8 @@ def refresh_active_vector_store(db: Session) -> dict[str, Any]:
                 {
                     "source_document": record["source_document"],
                     "reason": "No chunks produced",
+                    "storage_type": record.get("storage_type") or "local",
+                    "storage_path": record.get("storage_path"),
                 }
             )
             continue
@@ -524,6 +587,7 @@ def refresh_active_vector_store(db: Session) -> dict[str, Any]:
                 workflow=record["workflow"],
                 revision_number=int(record["revision_number"]),
                 file_hash=record["file_hash"],
+                storage_type=record.get("storage_type") or "local",
                 storage_path=record["storage_path"],
                 uploaded_by=record["uploaded_by"] or "system",
                 chunks=chunks,
@@ -542,4 +606,5 @@ def refresh_active_vector_store(db: Session) -> dict[str, Any]:
         "chunks_refreshed": refreshed_chunks,
         "skipped_documents": skipped_documents,
         "embedding_model": get_embedding_model_name(),
+        "storage_backend": settings.kb_storage_backend_normalized,
     }

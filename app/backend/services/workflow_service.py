@@ -7,7 +7,9 @@ from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
+from app.backend.agentcore.memory import create_conversation_event, retrieve_memory_context
 from app.backend.agents.state_graph import build_workflow_graph
+from app.backend.telemetry import record_operation
 from app.backend.services.workflow_state_service import (
     log_retrieval_event,
     log_workflow_event,
@@ -212,6 +214,7 @@ def _build_data_payload(final_state: dict[str, Any]) -> dict[str, Any]:
         "retrieval_strategy": evidence.get("retrieval_strategy") if isinstance(evidence, dict) else None,
         "retrieval_confidence": evidence.get("confidence") if isinstance(evidence, dict) else None,
         "retrieval_result_count": evidence.get("result_count") if isinstance(evidence, dict) else len(evidence_chunks),
+        "memory_context": final_state.get("memory_context", {}),
     }
 
 
@@ -250,6 +253,31 @@ def _log_retrievals_safely(
             )
         except Exception:
             logger.exception("Failed to log retrieval event", extra={"event": "retrieval_log_error"})
+
+
+def _record_memory_safely(
+    *,
+    employee_id: str,
+    request_id: str,
+    user_message: str,
+    assistant_message: str | None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    try:
+        return create_conversation_event(
+            employee_id=employee_id,
+            request_id=request_id,
+            user_message=user_message,
+            assistant_message=assistant_message,
+            metadata=metadata,
+        )
+    except Exception as exc:
+        logger.warning(
+            "AgentCore Memory recording failed",
+            extra={"event": "agentcore_memory_record_error", "request_id": request_id, "employee_id": employee_id},
+            exc_info=True,
+        )
+        return {"status": "error", "error": str(exc)}
 
 
 def _failure_response(
@@ -308,6 +336,22 @@ def _failure_response(
     except Exception:
         logger.exception("Failed to log workflow error event", extra={"event": "workflow_event_log_error"})
 
+    memory_result = _record_memory_safely(
+        employee_id=employee_id,
+        request_id=request_id,
+        user_message=message,
+        assistant_message=error_message,
+    )
+    response_payload["agentcore_memory"] = memory_result
+    record_operation(
+        "workflow.handle_request",
+        provider="local_langgraph",
+        status="failed",
+        duration_ms=duration_ms,
+        request_id=request_id,
+        properties={"employee_id": employee_id, "intent": classify_intent(message)},
+        error=str(exc),
+    )
     return response_payload
 
 
@@ -326,6 +370,15 @@ def handle_request(
 
     if not clean_employee_id:
         duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+        record_operation(
+            "workflow.handle_request",
+            provider="local_langgraph",
+            status="failed",
+            duration_ms=duration_ms,
+            request_id=request_id,
+            properties={"confirm": confirm, "message_length": len(clean_message)},
+            error="missing_employee_id",
+        )
         return {
             "status": "failed",
             "message": "Employee ID is required. Enter an employee ID in the sidebar before submitting a request.",
@@ -335,6 +388,12 @@ def handle_request(
             "duration_ms": duration_ms,
         }
 
+    memory_context = retrieve_memory_context(
+        employee_id=clean_employee_id,
+        query=clean_message,
+        request_id=request_id,
+    )
+
     try:
         graph = build_workflow_graph(db)
         final_state = graph.invoke(
@@ -343,6 +402,7 @@ def handle_request(
                 "employee_id": clean_employee_id,
                 "confirm": confirm,
                 "request_id": request_id,
+                "memory_context": memory_context,
             }
         )
     except Exception as exc:
@@ -406,7 +466,7 @@ def handle_request(
     )
 
     if waiting_for_confirmation:
-        return {
+        awaiting_response = {
             "status": "awaiting_confirmation",
             "message": response.get(
                 "message",
@@ -427,6 +487,28 @@ def handle_request(
             "ticket_status": "not_created",
             "duration_ms": duration_ms,
         }
+        awaiting_response["agentcore_memory"] = _record_memory_safely(
+            employee_id=clean_employee_id,
+            request_id=request_id,
+            user_message=clean_message,
+            assistant_message=str(awaiting_response.get("message") or ""),
+        )
+        record_operation(
+            "workflow.handle_request",
+            provider="local_langgraph",
+            status="awaiting_confirmation",
+            duration_ms=duration_ms,
+            request_id=request_id,
+            properties={
+                "employee_id": clean_employee_id,
+                "intent": str(intent),
+                "workflow": str(final_state.get("workflow", intent)),
+                "evidence_count": len(data_payload.get("evidence_chunks") or []),
+                "execution_status": execution_status,
+                "approval_status": "awaiting_confirmation",
+            },
+        )
+        return awaiting_response
 
     ticket = None
     ticket_status = "not_created"
@@ -489,5 +571,32 @@ def handle_request(
         "ticket_status": ticket_status,
         "duration_ms": duration_ms,
     }
+    final_response["agentcore_memory"] = _record_memory_safely(
+        employee_id=clean_employee_id,
+        request_id=request_id,
+        user_message=clean_message,
+        assistant_message=str(final_response.get("message") or ""),
+    )
 
+    record_operation(
+        "workflow.handle_request",
+        provider="local_langgraph",
+        status=final_status,
+        duration_ms=duration_ms,
+        request_id=request_id,
+        properties={
+            "employee_id": clean_employee_id,
+            "intent": str(intent),
+            "workflow": str(final_state.get("workflow", intent)),
+            "evidence_count": len(data_payload.get("evidence_chunks") or []),
+            "execution_status": execution_status,
+            "approval_status": final_response.get("approval_status"),
+            "ticket_status": ticket_status,
+            "llm_provider": llm_trace.get("provider"),
+            "llm_fallback": llm_trace.get("fallback"),
+        },
+        extra_metrics={
+            "EvidenceCount": (float(len(data_payload.get("evidence_chunks") or [])), "Count"),
+        },
+    )
     return final_response

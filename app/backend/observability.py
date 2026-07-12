@@ -19,6 +19,11 @@ REQUEST_ID_HEADER = "X-Request-ID"
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
+        emf_payload = getattr(record, "emf_payload", None)
+        if isinstance(emf_payload, dict):
+            # CloudWatch Embedded Metrics Format must be the top-level JSON object.
+            return json.dumps(emf_payload, default=str)
+
         payload: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
@@ -36,10 +41,20 @@ class JsonFormatter(logging.Formatter):
             "duration_ms",
             "client",
             "event",
+            "operation",
+            "provider",
+            "status",
+            "session_id",
+            "tool",
+            "model_id",
         ):
             value = getattr(record, key, None)
             if value is not None:
                 payload[key] = value
+
+        telemetry = getattr(record, "telemetry", None)
+        if isinstance(telemetry, dict):
+            payload["telemetry"] = telemetry
 
         if record.exc_info:
             payload["exception"] = self.formatException(record.exc_info)

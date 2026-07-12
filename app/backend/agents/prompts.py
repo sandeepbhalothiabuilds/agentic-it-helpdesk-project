@@ -50,6 +50,7 @@ def build_response_prompt(payload: dict[str, Any]) -> str:
     rule = payload.get("rule") or {}
     evidence = payload.get("evidence") or {}
     result = payload.get("result") or {}
+    memory_context = payload.get("memory_context") or {}
 
     full_name = user.get("full_name") or "the user"
     email = user.get("email") or ""
@@ -66,6 +67,13 @@ def build_response_prompt(payload: dict[str, Any]) -> str:
         results = evidence.get("results") or []
         if isinstance(results, list):
             evidence_count = len(results)
+
+    memory_items: list[str] = []
+    if isinstance(memory_context, dict):
+        for item in memory_context.get("results") or []:
+            if isinstance(item, dict) and item.get("text"):
+                memory_items.append(str(item.get("text"))[:400])
+    memory_summary = "\n".join(memory_items[:3]) if memory_items else "N/A"
 
     email_instruction = (
         f"Use this registered email exactly as written: {email}"
@@ -86,6 +94,7 @@ Requirements:
 - If email is missing, explicitly say the registered email is unavailable.
 - Do not invent details.
 - Do not mention internal implementation details unless necessary.
+- Use AgentCore Memory context only to maintain continuity; do not expose memory internals.
 - If the request was completed, clearly state the outcome.
 - If confirmation is still needed, ask for confirmation clearly.
 - If evidence was retrieved, you may mention that the request was grounded in the knowledge base.
@@ -108,6 +117,7 @@ Context:
 {_format_context_block("Result message", result_message)}
 {_format_context_block("User message", message)}
 {_format_context_block("Evidence count", evidence_count)}
+{_format_context_block("Relevant memory context", memory_summary)}
 {_format_context_block("Email instruction", email_instruction)}
 
 Write the final response now.

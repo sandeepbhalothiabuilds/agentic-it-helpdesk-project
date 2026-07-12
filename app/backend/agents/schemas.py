@@ -15,6 +15,7 @@ class WorkflowState(TypedDict, total=False):
     retrievals: list[dict[str, Any]]
     documents: list[dict[str, Any]]
     chunks: list[dict[str, Any]]
+    memory_context: dict[str, Any]
     retrieval_confidence: str
     retrieval_strategy: str
     user_found: bool

@@ -100,3 +100,31 @@ BACKEND_API_KEY=<secret value>
 ```
 
 The Streamlit frontend sends the same key when `BACKEND_API_KEY`, `FRONTEND_API_KEY`, or `APP_API_KEY` is set.
+
+## AWS Bedrock + AgentCore migration
+
+Phase 2 introduces AWS-native agent runtime support while keeping the current local LangGraph path available.
+
+Key environment variables:
+
+```bash
+LLM_PROVIDER=bedrock
+AWS_REGION=us-east-1
+BEDROCK_TEXT_MODEL_ID=<your-bedrock-chat-model-id>
+
+# AWS-native knowledge path
+EMBEDDING_PROVIDER=bedrock
+BEDROCK_EMBEDDING_MODEL_ID=amazon.titan-embed-text-v2:0
+KB_STORAGE_BACKEND=s3
+KB_S3_BUCKET=<your-knowledge-bucket>
+RETRIEVAL_PROVIDER=bedrock_kb
+BEDROCK_KNOWLEDGE_BASE_ID=<your-bedrock-kb-id>
+RETRIEVAL_FALLBACK_TO_DB=true
+
+AGENT_RUNTIME_PROVIDER=local
+# After deploying AgentCore Runtime:
+# AGENT_RUNTIME_PROVIDER=agentcore
+# AGENTCORE_RUNTIME_ARN=<your-agentcore-runtime-arn>
+```
+
+See `docs/phase2_bedrock_agentcore.md`, `docs/phase2_bedrock_storage_retrieval.md`, and `docs/phase2_agentcore_memory_gateway.md` for the migration sequence, IAM permissions, managed memory, governed tool access, and rollback approach.

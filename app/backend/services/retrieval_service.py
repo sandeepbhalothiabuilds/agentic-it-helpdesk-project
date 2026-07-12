@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import math
 import re
+import time
 from collections import Counter
 from typing import Any, Iterable
 
 import numpy as np
 from sqlalchemy import or_
 
+from app.backend.config import settings
 from app.backend.db.models import DocumentChunk
 from app.backend.db.session import SessionLocal
+from app.backend.rag import bedrock_kb_service
 from app.backend.rag.embedding_service import embed_text
+from app.backend.telemetry import record_operation
 
 STOP_WORDS = {
     "a",
@@ -222,7 +226,7 @@ def _result_from_row(
     }
 
 
-def search_knowledge(
+def _search_db_knowledge(
     query: str,
     workflow: str,
     top_k: int = 3,
@@ -337,3 +341,125 @@ def search_knowledge(
             "workflow_boost": 0.035,
         },
     }
+
+
+def search_knowledge(
+    query: str,
+    workflow: str,
+    top_k: int = 3,
+    *,
+    min_score: float = 0.0,
+    candidate_limit: int = 500,
+    include_general: bool = True,
+    semantic_weight: float = 0.72,
+    lexical_weight: float = 0.28,
+) -> dict[str, Any]:
+    """Retrieve evidence through the configured provider.
+
+    RETRIEVAL_PROVIDER=db keeps the PostgreSQL document_chunks path.
+    RETRIEVAL_PROVIDER=bedrock_kb queries Amazon Bedrock Knowledge Bases and
+    optionally falls back to PostgreSQL when RETRIEVAL_FALLBACK_TO_DB=true.
+    """
+    provider = settings.retrieval_provider_normalized
+    started = time.perf_counter()
+    telemetry_props = {
+        "workflow": workflow,
+        "top_k": top_k,
+        "query_length": len(query or ""),
+        "min_score": min_score,
+        "candidate_limit": candidate_limit,
+        "include_general": include_general,
+    }
+    if provider == "bedrock_kb":
+        try:
+            payload = bedrock_kb_service.retrieve_knowledge_base(
+                query=query,
+                workflow=workflow,
+                top_k=top_k,
+            )
+            payload["fallback_used"] = False
+            record_operation(
+                "retrieval.search_knowledge",
+                provider="bedrock_kb",
+                status="success",
+                duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                properties={
+                    **telemetry_props,
+                    "result_count": payload.get("result_count"),
+                    "candidate_count": payload.get("candidate_count"),
+                    "confidence": payload.get("confidence"),
+                    "fallback_used": False,
+                },
+                extra_metrics={"RetrievalResultCount": (float(payload.get("result_count") or 0), "Count")},
+            )
+            return payload
+        except Exception as exc:
+            if not settings.retrieval_db_fallback_enabled:
+                record_operation(
+                    "retrieval.search_knowledge",
+                    provider="bedrock_kb",
+                    status="error",
+                    duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                    properties={**telemetry_props, "fallback_enabled": False},
+                    error=str(exc),
+                )
+                raise
+            fallback_payload = _search_db_knowledge(
+                query=query,
+                workflow=workflow,
+                top_k=top_k,
+                min_score=min_score,
+                candidate_limit=candidate_limit,
+                include_general=include_general,
+                semantic_weight=semantic_weight,
+                lexical_weight=lexical_weight,
+            )
+            fallback_payload["fallback_used"] = True
+            fallback_payload["fallback_reason"] = str(exc)
+            fallback_payload["requested_retrieval_provider"] = "bedrock_kb"
+            record_operation(
+                "retrieval.search_knowledge",
+                provider="db",
+                status="fallback_success",
+                duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                properties={
+                    **telemetry_props,
+                    "requested_provider": "bedrock_kb",
+                    "fallback_used": True,
+                    "fallback_reason": str(exc),
+                    "result_count": fallback_payload.get("result_count"),
+                    "candidate_count": fallback_payload.get("candidate_count"),
+                    "confidence": fallback_payload.get("confidence"),
+                },
+                extra_metrics={"RetrievalResultCount": (float(fallback_payload.get("result_count") or 0), "Count")},
+            )
+            return fallback_payload
+
+    payload = _search_db_knowledge(
+        query=query,
+        workflow=workflow,
+        top_k=top_k,
+        min_score=min_score,
+        candidate_limit=candidate_limit,
+        include_general=include_general,
+        semantic_weight=semantic_weight,
+        lexical_weight=lexical_weight,
+    )
+    payload["fallback_used"] = False
+    payload["requested_retrieval_provider"] = provider
+    record_operation(
+        "retrieval.search_knowledge",
+        provider=provider,
+        status="success",
+        duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        properties={
+            **telemetry_props,
+            "retrieval_strategy": payload.get("retrieval_strategy"),
+            "result_count": payload.get("result_count"),
+            "candidate_count": payload.get("candidate_count"),
+            "confidence": payload.get("confidence"),
+            "fallback_used": False,
+        },
+        extra_metrics={"RetrievalResultCount": (float(payload.get("result_count") or 0), "Count")},
+    )
+    return payload
