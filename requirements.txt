@@ -9,6 +9,7 @@ requests
 streamlit
 pandas
 numpy
+sentence-transformers
 langgraph
 python-docx
 pypdf
