@@ -9,7 +9,8 @@ requests
 streamlit
 pandas
 numpy
-sentence-transformers
+sentence-transformers==3.2.1
+transformers==4.46.3
 langgraph
 python-docx
 pypdf
