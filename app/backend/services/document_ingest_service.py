@@ -296,9 +296,9 @@ def _insert_document_chunks(
             f"{document_id}|{source_document}|{revision_number}|{idx}|{chunk}".encode("utf-8")
         ).hexdigest()
 
-        embedding = embed_text(chunk)
-        if not embedding:
-            continue
+        # Lexical deployments intentionally do not generate dense vectors.
+        # Persist the chunk with an empty vector so lexical retrieval can use it.
+        embedding = embed_text(chunk) or []
 
         row = DocumentChunk(
             chunk_id=chunk_id,
@@ -509,12 +509,12 @@ def refresh_active_vector_store(db: Session) -> dict[str, Any]:
             continue
 
         try:
+            # Chunk IDs are deterministic for a document revision. Remove the
+            # previous materialization before rebuilding so refresh remains
+            # idempotent instead of violating document_chunks_pkey.
             db.query(DocumentChunk).filter(
                 DocumentChunk.source_document == record["source_document"]
-            ).update(
-                {DocumentChunk.is_active: False},
-                synchronize_session=False,
-            )
+            ).delete(synchronize_session=False)
 
             refreshed_chunks += _insert_document_chunks(
                 db,

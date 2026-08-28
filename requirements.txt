@@ -10,7 +10,6 @@ streamlit
 pandas
 numpy
 langgraph
-sentence-transformers
 python-docx
 pypdf
 PyPDF2

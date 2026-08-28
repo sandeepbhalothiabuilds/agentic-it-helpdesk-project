@@ -15,13 +15,13 @@ logging.basicConfig(level=logging.INFO)
 #   "huggingface"  -> MiniLM from Sentence Transformers
 #   "ollama"       -> local Ollama embeddings
 ###############################################################################
-EMBEDDING_PROVIDER = "huggingface"  # default: all-MiniLM-L6-v2
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "huggingface").strip().lower()
 EMBEDDING_FALLBACK_PROVIDER = "ollama"  # fallback if HuggingFace fails
 
 ###############################################################################
 # HuggingFace / Sentence Transformers
 ###############################################################################
-HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+HF_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 
 ###############################################################################
 # Ollama
@@ -100,6 +100,8 @@ def get_embedding_model_name() -> str:
         return HF_MODEL
     if EMBEDDING_PROVIDER == "ollama":
         return OLLAMA_MODEL
+    if EMBEDDING_PROVIDER == "lexical":
+        return "lexical-fallback"
     raise ValueError(f"Unknown EMBEDDING_PROVIDER: {EMBEDDING_PROVIDER}")
 
 
@@ -115,6 +117,9 @@ def embed_text(text: str) -> List[float]:
     """
     cleaned = (text or "").strip()
     if not cleaned:
+        return []
+
+    if EMBEDDING_PROVIDER == "lexical":
         return []
 
     if EMBEDDING_PROVIDER == "huggingface":
